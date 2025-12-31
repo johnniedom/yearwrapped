@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { gradientClasses } from "@/lib/gradients";
 import { YEAR } from "@/lib/config";
 import { useApp } from "@/context/AppContext";
+import { fileToCanvasSafeDataUrl, waitForImagesInNode } from "@/lib/images";
 import {
   checkForNewAchievements,
   checkSpecialAchievements,
@@ -83,11 +84,20 @@ export const CardEditor = ({
 
   const shakeButton = contextSafe((buttonRef: React.RefObject<HTMLButtonElement | null>) => {
     if (!buttonRef.current) return;
-    gsap.to(buttonRef.current, {
-      x: [-10, 10, -8, 8, -5, 5, 0],
-      duration: 0.5,
-      ease: "power2.out",
-    });
+
+    // Typesafe shake (avoids TweenValue array typing issues)
+    gsap.fromTo(
+      buttonRef.current,
+      { x: -10 },
+      {
+        x: 10,
+        duration: 0.08,
+        repeat: 5,
+        yoyo: true,
+        ease: "power2.inOut",
+        clearProps: "x",
+      },
+    );
   });
 
   const handleInvalidClick = (buttonRef: React.RefObject<HTMLButtonElement | null>) => {
@@ -118,25 +128,30 @@ export const CardEditor = ({
     setIsSaved(false); // Reset saved state when data changes
   };
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image too large. Please use an image under 5MB.");
-        return;
-      }
-      // Validate file type
-      if (!file.type.startsWith("image/")) {
-        toast.error("Please upload a valid image file.");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setImagePreview(event.target?.result as string);
-        setIsSaved(false); // Reset saved state when image changes
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image too large. Please use an image under 5MB.");
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith("image/") && !file.name.toLowerCase().match(/\.(heic|heif)$/)) {
+      toast.error("Please upload a valid image file.");
+      return;
+    }
+
+    try {
+      // 2025-safe: convert HEIC/HEIF -> JPEG and use data URLs (iOS canvas/export reliability)
+      const safeDataUrl = await fileToCanvasSafeDataUrl(file);
+      setImagePreview(safeDataUrl);
+      setIsSaved(false);
+    } catch (err) {
+      console.error("Image processing failed", err);
+      toast.error("Couldn't process that image. Try a different photo.");
     }
   };
 
@@ -149,22 +164,38 @@ export const CardEditor = ({
     if (!cardRef.current) return null;
     const card = cardRef.current;
 
-    // Use html-to-image with high pixel ratio for 4K quality
+    // Ensure all <img> assets have fully loaded/decoded before capture (iOS Safari)
+    await waitForImagesInNode(card);
+
+    // Debug info for verification
+    const imgs = Array.from(card.querySelectorAll("img"));
+    console.debug(
+      "[export] imagePreview src prefix:",
+      imagePreview?.slice(0, 64) || "(none)",
+    );
+    console.debug(
+      "[export] imgs:",
+      imgs.map((i) => ({ src: i.src?.slice(0, 64), complete: i.complete, w: i.naturalWidth, h: i.naturalHeight })),
+    );
+
+    const isIOS = /iP(ad|hone|od)/.test(navigator.userAgent);
+
+    // iOS canvas memory is limited; keep a conservative pixelRatio.
+    const pixelRatio = isIOS ? 2 : 4;
+
     const dataUrl = await toPng(card, {
-      pixelRatio: 4, // 4x for 4K resolution
-      cacheBust: true, // Ensure fresh image capture
+      pixelRatio,
+      cacheBust: true,
       skipAutoScale: true,
+      backgroundColor: "#ffffff",
       filter: (node) => {
-        // Skip elements that don't render well
         if (node instanceof Element) {
-          // Skip noise texture if it causes issues
-          if (node.classList?.contains("bg-noise")) {
-            return false;
-          }
+          if (node.classList?.contains("bg-noise")) return false;
         }
         return true;
       },
     });
+
     return dataUrl;
   };
 

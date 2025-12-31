@@ -34,14 +34,22 @@ export const WrappedCardPreview = forwardRef<HTMLDivElement, WrappedCardPreviewP
           </div>
 
           {imageUrl && (
-            <div 
+            <div
               className="relative w-full aspect-square mb-6 rounded-2xl overflow-hidden border border-white/20 shadow-2xl group"
             >
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10" />
-                <div 
-                    className="absolute inset-0 bg-cover bg-center duration-500 group-hover:scale-110"
-                    style={{ backgroundImage: `url(${imageUrl})` }}
-                />
+              {/* Hidden preload img: ensures iOS decodes the data URL before export */}
+              <img
+                src={imageUrl}
+                alt=""
+                className="absolute w-px h-px opacity-0 pointer-events-none"
+                crossOrigin="anonymous"
+              />
+
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10" />
+              <div
+                className="absolute inset-0 bg-cover bg-center duration-500 group-hover:scale-110"
+                style={{ backgroundImage: `url(${imageUrl})` }}
+              />
             </div>
           )}
 
