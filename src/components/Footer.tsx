@@ -17,7 +17,7 @@ export const Footer = () => {
 return (
 <footer className="py-6 px-4 border-t border-border/50 bg-background/80 backdrop-blur-sm">
 <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-muted-foreground">
-<span>Made by</span>
+<span>Made by:</span>
 <div className="flex flex-col sm:flex-row items-center gap-4">
 {creators.map((creator, index) => (
 <span key={creator.name} className="flex items-center gap-2">
